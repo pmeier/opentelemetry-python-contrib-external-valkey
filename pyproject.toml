@@ -19,7 +19,7 @@ dependencies = [
 instruments = ["valkey>=6.1.0"]
 dev = [
     {include-group = "instruments"},
-    "fakeredis==2.23.3",
+    "fakeredis>=2.25",
     "opentelemetry-test-utils==0.59b0",
     "pytest>=7.4.4",
     "pytest-asyncio>=1.2.0",

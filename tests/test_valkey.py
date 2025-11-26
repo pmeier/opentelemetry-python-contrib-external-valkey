@@ -21,8 +21,8 @@ import fakeredis
 import pytest
 import valkey
 import valkey.asyncio
-from fakeredis.aioredis import FakeRedis
-from valkey.exceptions import ConnectionError as valkey_ConnectionError
+from fakeredis import FakeAsyncValkey
+from redis.exceptions import ConnectionError as redis_ConnectionError
 from valkey.exceptions import WatchError
 
 from opentelemetry import trace
@@ -61,10 +61,10 @@ class TestRedis(TestBase):
         ValkeyInstrumentor().uninstrument()
 
     def test_span_properties(self):
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.get("key")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.get("key")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -73,26 +73,26 @@ class TestRedis(TestBase):
         self.assertEqual(span.kind, SpanKind.CLIENT)
 
     def test_not_recording(self):
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
 
         mock_tracer = mock.Mock()
         mock_span = mock.Mock()
         mock_span.is_recording.return_value = False
         mock_tracer.start_span.return_value = mock_span
         with mock.patch("opentelemetry.trace.get_tracer") as tracer:
-            with mock.patch.object(redis_client, "connection"):
+            with mock.patch.object(valkey_client, "connection"):
                 tracer.return_value = mock_tracer
-                redis_client.get("key")
+                valkey_client.get("key")
                 self.assertFalse(mock_span.is_recording())
                 self.assertTrue(mock_span.is_recording.called)
                 self.assertFalse(mock_span.set_attribute.called)
                 self.assertFalse(mock_span.set_status.called)
 
     def test_instrument_uninstrument(self):
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.get("key")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.get("key")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -101,8 +101,8 @@ class TestRedis(TestBase):
         # Test uninstrument
         ValkeyInstrumentor().uninstrument()
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.get("key")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.get("key")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 0)
@@ -111,17 +111,17 @@ class TestRedis(TestBase):
         # Test instrument again
         ValkeyInstrumentor().instrument()
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.get("key")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.get("key")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
 
     def test_instrument_uninstrument_async_client_command(self):
-        redis_client = valkey.asyncio.Valkey()
+        valkey_client = valkey.asyncio.Valkey()
 
-        with mock.patch.object(redis_client, "connection", AsyncMock()):
-            asyncio.run(redis_client.get("key"))
+        with mock.patch.object(valkey_client, "connection", AsyncMock()):
+            asyncio.run(valkey_client.get("key"))
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -130,8 +130,8 @@ class TestRedis(TestBase):
         # Test uninstrument
         ValkeyInstrumentor().uninstrument()
 
-        with mock.patch.object(redis_client, "connection", AsyncMock()):
-            asyncio.run(redis_client.get("key"))
+        with mock.patch.object(valkey_client, "connection", AsyncMock()):
+            asyncio.run(valkey_client.get("key"))
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 0)
@@ -140,16 +140,16 @@ class TestRedis(TestBase):
         # Test instrument again
         ValkeyInstrumentor().instrument()
 
-        with mock.patch.object(redis_client, "connection", AsyncMock()):
-            asyncio.run(redis_client.get("key"))
+        with mock.patch.object(valkey_client, "connection", AsyncMock()):
+            asyncio.run(valkey_client.get("key"))
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
 
     def test_response_hook(self):
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
         connection = valkey.connection.Connection()
-        redis_client.connection = connection
+        valkey_client.connection = connection
 
         response_attribute_name = "db.valkey.response"
 
@@ -165,9 +165,9 @@ class TestRedis(TestBase):
 
         with mock.patch.object(connection, "send_command"):
             with mock.patch.object(
-                redis_client, "parse_response", return_value=test_value
+                valkey_client, "parse_response", return_value=test_value
             ):
-                redis_client.get("key")
+                valkey_client.get("key")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -178,9 +178,9 @@ class TestRedis(TestBase):
         )
 
     def test_request_hook(self):
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
         connection = valkey.connection.Connection()
-        redis_client.connection = connection
+        valkey_client.connection = connection
 
         custom_attribute_name = "my.request.attribute"
 
@@ -197,9 +197,9 @@ class TestRedis(TestBase):
 
         with mock.patch.object(connection, "send_command"):
             with mock.patch.object(
-                redis_client, "parse_response", return_value=test_value
+                valkey_client, "parse_response", return_value=test_value
             ):
-                redis_client.get("key")
+                valkey_client.get("key")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -208,9 +208,9 @@ class TestRedis(TestBase):
         self.assertEqual(span.attributes.get(custom_attribute_name), "GET")
 
     def test_query_sanitizer_enabled(self):
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
         connection = valkey.connection.Connection()
-        redis_client.connection = connection
+        valkey_client.connection = connection
 
         ValkeyInstrumentor().uninstrument()
         ValkeyInstrumentor().instrument(
@@ -218,8 +218,8 @@ class TestRedis(TestBase):
             sanitize_query=True,
         )
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.set("key", "value")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.set("key", "value")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -228,12 +228,12 @@ class TestRedis(TestBase):
         self.assertEqual(span.attributes.get("db.statement"), "SET ? ?")
 
     def test_query_sanitizer(self):
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
         connection = valkey.connection.Connection()
-        redis_client.connection = connection
+        valkey_client.connection = connection
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.set("key", "value")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.set("key", "value")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -246,19 +246,19 @@ class TestRedis(TestBase):
         tracer_provider = trace.NoOpTracerProvider()
         ValkeyInstrumentor().instrument(tracer_provider=tracer_provider)
 
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.get("key")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.get("key")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 0)
 
     def test_attributes_default(self):
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.set("key", "value")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.set("key", "value")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -277,10 +277,10 @@ class TestRedis(TestBase):
         )
 
     def test_attributes_tcp(self):
-        redis_client = valkey.Valkey.from_url("valkey://foo:bar@1.1.1.1:6380/1")
+        valkey_client = valkey.Valkey.from_url("valkey://foo:bar@1.1.1.1:6380/1")
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.set("key", "value")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.set("key", "value")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -299,12 +299,12 @@ class TestRedis(TestBase):
         )
 
     def test_attributes_unix_socket(self):
-        redis_client = valkey.Valkey.from_url(
+        valkey_client = valkey.Valkey.from_url(
             "unix://foo@/path/to/socket.sock?db=3&password=bar"
         )
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.set("key", "value")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.set("key", "value")
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
@@ -325,12 +325,12 @@ class TestRedis(TestBase):
         )
 
     def test_connection_error(self):
-        server = fakeredis.FakeServer()
+        server = fakeredis.FakeServer(server_type="valkey")
         server.connected = False
-        redis_client = fakeredis.FakeStrictRedis(server=server)
+        valkey_client = fakeredis.FakeStrictValkey(server=server)
         try:
-            redis_client.set("foo", "bar")
-        except valkey_ConnectionError:
+            valkey_client.set("foo", "bar")
+        except redis_ConnectionError:
             pass
 
         spans = self.memory_exporter.get_finished_spans()
@@ -342,10 +342,10 @@ class TestRedis(TestBase):
         self.assertEqual(span.status.status_code, trace.StatusCode.ERROR)
 
     def test_response_error(self):
-        redis_client = fakeredis.FakeStrictRedis()
-        redis_client.lpush("mylist", "value")
+        valkey_client = fakeredis.FakeStrictValkey()
+        valkey_client.lpush("mylist", "value")
         try:
-            redis_client.incr(
+            valkey_client.incr(
                 "mylist"
             )  # Trying to increment a list, which is invalid
         except valkey.ResponseError:
@@ -367,10 +367,10 @@ class TestRedis(TestBase):
     def test_watch_error_sync(self):
         def redis_operations():
             with pytest.raises(WatchError):
-                redis_client = fakeredis.FakeStrictRedis()
-                pipe = redis_client.pipeline(transaction=True)
+                valkey_client = fakeredis.FakeStrictValkey()
+                pipe = valkey_client.pipeline(transaction=True)
                 pipe.watch("a")
-                redis_client.set("a", "bad")  # This will cause the WatchError
+                valkey_client.set("a", "bad")  # This will cause the WatchError
                 pipe.multi()
                 pipe.set("a", "1")
                 pipe.execute()
@@ -406,10 +406,10 @@ class TestRedisAsync(TestBase, IsolatedAsyncioTestCase):
     def setUp(self):
         super().setUp()
         self.instrumentor = ValkeyInstrumentor()
-        self.client: FakeRedis = FakeRedis()
+        self.client: FakeAsyncValkey = FakeAsyncValkey()
 
     @staticmethod
-    async def _redis_pipeline_operations(client: FakeRedis):
+    async def _redis_pipeline_operations(client: FakeAsyncValkey):
         with pytest.raises(WatchError):
             async with client.pipeline(transaction=False) as pipe:
                 await pipe.watch("a")
@@ -433,8 +433,8 @@ class TestRedisAsync(TestBase, IsolatedAsyncioTestCase):
         self.instrumentor.instrument(
             tracer_provider=self.tracer_provider, response_hook=response_hook
         )
-        redis_client = FakeRedis()
-        await self._redis_pipeline_operations(redis_client)
+        valkey_client = FakeAsyncValkey()
+        await self._redis_pipeline_operations(valkey_client)
 
         # there should be 3 tests, we start watch operation and have 2 set operation on same key
         spans = self.assert_span_count(3)
@@ -456,8 +456,8 @@ class TestRedisAsync(TestBase, IsolatedAsyncioTestCase):
         self.instrumentor.instrument_client(
             tracer_provider=self.tracer_provider, client=self.client
         )
-        redis_client = FakeRedis()
-        await self._redis_pipeline_operations(redis_client)
+        valkey_client = FakeAsyncValkey()
+        await self._redis_pipeline_operations(valkey_client)
 
         spans = self.memory_exporter.get_finished_spans()
 
@@ -536,7 +536,7 @@ class TestRedisAsync(TestBase, IsolatedAsyncioTestCase):
         self.assertEqual(span.attributes.get(request_attr), "SET")
         self.assertEqual(span.attributes.get(response_attr), True)
         # fresh client should not record any spans
-        fresh_client = FakeRedis()
+        fresh_client = FakeAsyncValkey()
         self.memory_exporter.clear()
         await fresh_client.set("key", "value")
         self.assert_span_count(0)
@@ -558,7 +558,7 @@ class TestRedisInstance(TestBase):
 
     def setUp(self):
         super().setUp()
-        self.client = fakeredis.FakeStrictRedis()
+        self.client = fakeredis.FakeStrictValkey()
         ValkeyInstrumentor().instrument_client(
             client=self.client, tracer_provider=self.tracer_provider
         )
@@ -568,10 +568,10 @@ class TestRedisInstance(TestBase):
         ValkeyInstrumentor().uninstrument_client(self.client)
 
     def test_only_client_instrumented(self):
-        redis_client = valkey.Valkey()
+        valkey_client = valkey.Valkey()
 
-        with mock.patch.object(redis_client, "connection"):
-            redis_client.get("key")
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.get("key")
 
         spans = self.assert_span_count(0)
 
@@ -594,9 +594,9 @@ class TestRedisInstance(TestBase):
             pipe.execute()
 
     def test_watch_error_sync_only_client(self):
-        redis_client = fakeredis.FakeStrictRedis()
+        valkey_client = fakeredis.FakeStrictValkey()
 
-        self.redis_operations(redis_client)
+        self.redis_operations(valkey_client)
 
         self.assert_span_count(0)
 
