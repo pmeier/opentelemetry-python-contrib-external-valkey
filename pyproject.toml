@@ -35,3 +35,10 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "opentelemetry.instrumentation.valkey"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra --tb=short"
+testpaths = [
+    "tests",
+]
