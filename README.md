@@ -1,6 +1,6 @@
 # opentelemetry-python-contrib-external-valkey
 
-[OpenTelemetry](https://opentelemetry.io/) instrumentation for the [Valkey Python Client].
+[OpenTelemetry](https://opentelemetry.io/) instrumentation for the [Valkey Python Client](https://github.com/valkey-io/valkey-py).
 
 ## How do I install it?
 
@@ -20,7 +20,7 @@ or something equivalent.
 
 ## How do I use it?
 
-For global instrumentation of the [Valkey Python client] you can do
+For global instrumentation of the [Valkey Python client](https://github.com/valkey-io/valkey-py) you can do
 
 ```python
 from opentelemetry.instrumentation.valkey import ValkeyInstrumentor
@@ -37,5 +37,3 @@ For more detailed documentation please have a look at the [`opentelemetry-instru
 ## How does it work?
 
 This repository is a fork of [opentelemetry-python-contrib](https://github.com/open-telemetry/opentelemetry-python-contrib) and specifically the [instrumentation/opentelemetry-instrumentation-redis](https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation/opentelemetry-instrumentation-redis) folder. 95% and more of the changes in the [`src`](./src) and [`tests`](./tests) folders are just replacing the strings `redis` and `Redis` with `valkey` and `Valkey` respectively.
-
-[Valkey Python Client]: https://github.com/valkey-io/valkey-py
