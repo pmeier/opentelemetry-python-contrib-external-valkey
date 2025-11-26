@@ -1,0 +1,37 @@
+[project]
+name = "opentelemetry-python-contrib-external-valkey"
+description = "OpenTelemetry Valkey instrumentation"
+authors = [
+    { name = "Philip Meier", email = "github.pmeier@posteo.de" },
+]
+readme = "README.md"
+requires-python = ">=3.9"
+version = "0.59b0"
+
+dependencies = [
+    "opentelemetry-api~=1.12",
+    "opentelemetry-instrumentation==0.59b0",
+    "opentelemetry-semantic-conventions==0.59b0",
+    "wrapt>= 1.12.1",
+]
+
+[dependency-groups]
+instruments = ["valkey>=6.1.0"]
+dev = [
+    {include-group = "instruments"},
+    "fakeredis==2.23.3",
+    "opentelemetry-test-utils==0.59b0",
+    "pytest>=7.4.4",
+    "pytest-asyncio>=1.2.0",
+]
+
+
+[project.entry-points.opentelemetry_instrumentor]
+redis = "opentelemetry.instrumentation.valkey:ValkeyInstrumentor"
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "opentelemetry.instrumentation.valkey"
