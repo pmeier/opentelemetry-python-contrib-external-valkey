@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
 
     runs-on: ${{ matrix.os }}
-    name: test / pytest (${{ matrix.os }}, ${{ matrix.python-version }})
+    name: pytest (${{ matrix.os }}, ${{ matrix.python-version }})
 
     steps:
       - name: Checkout repository
