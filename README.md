@@ -4,7 +4,7 @@
 
 ## How do I install it?
 
-`opentelemetry-python-contrib-external-valkey` is available on [PyPI](). You can install it with
+`opentelemetry-python-contrib-external-valkey` is available on [PyPI](https://pypi.org/project/opentelemetry-python-contrib-external-valkey). You can install it with
 
 ```shell
 pip install opentelemetry-python-contrib-external-valkey
@@ -32,7 +32,7 @@ For more detailed documentation please have a look at the [`opentelemetry-instru
 
 ## Why is this needed?
 
-`opentelemetry-instrumentation-redis` instruments the `redis` module and has multiple `isinstance` checks for classes from it. Since the [Valkey Python Client] is a fork of the [Redis Python Client](https://github.com/redis/redis-py), any instrumentation through `opentelemetry-instrumentation-redis` has no effect on the `valkey` module or any of its classes. `opentelemetry-python-contrib-external-valkey` fills this gap until Valkey is [officially supported](https://github.com/open-telemetry/opentelemetry-python-contrib/pull/3478) and gives Valkey users the same user experience for instrumentation as Redis users. 
+`opentelemetry-instrumentation-redis` instruments the `redis` module and has multiple `isinstance` checks for classes from it. Since the [Valkey Python Client](https://github.com/valkey-io/valkey-py) is a fork of the [Redis Python Client](https://github.com/redis/redis-py), any instrumentation through `opentelemetry-instrumentation-redis` has no effect on the `valkey` module or any of its classes. `opentelemetry-python-contrib-external-valkey` fills this gap until Valkey is [officially supported](https://github.com/open-telemetry/opentelemetry-python-contrib/pull/3478) and gives Valkey users the same user experience for instrumentation as Redis users. 
 
 ## How does it work?
 
