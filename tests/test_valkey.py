@@ -44,7 +44,7 @@ from opentelemetry.trace import SpanKind
 
 
 # pylint: disable=too-many-public-methods
-class TestValkey(TestBase):
+class TestRedis(TestBase):
     def assert_span_count(self, count: int):
         """
         Assert that the memory exporter has the expected number of spans.
