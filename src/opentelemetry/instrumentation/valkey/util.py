@@ -208,4 +208,4 @@ def _build_span_meta_data_for_pipeline(
         resource = ""
         span_name = ""
 
-    return command_stack, resource, span_name
+    return command_stack, resource, span_name or "valkey"
