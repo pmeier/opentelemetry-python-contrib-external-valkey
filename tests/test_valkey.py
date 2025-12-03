@@ -367,7 +367,7 @@ class TestValkey(TestBase):
         self.assertEqual(span.status.status_code, trace.StatusCode.ERROR)
 
     def test_watch_error_sync(self):
-        def valkey_operations():
+        def redis_operations():
             with pytest.raises(WatchError):
                 valkey_client = fakeredis.FakeStrictValkey()
                 pipe = valkey_client.pipeline(transaction=True)
@@ -377,7 +377,7 @@ class TestValkey(TestBase):
                 pipe.set("a", "1")
                 pipe.execute()
 
-        valkey_operations()
+        redis_operations()
 
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 3)
@@ -491,7 +491,7 @@ class TestValkeyAsync(TestBase, IsolatedAsyncioTestCase):
         self.client: FakeAsyncValkey = FakeAsyncValkey()
 
     @staticmethod
-    async def _valkey_pipeline_operations(client: FakeAsyncValkey):
+    async def _redis_pipeline_operations(client: FakeAsyncValkey):
         with pytest.raises(WatchError):
             async with client.pipeline(transaction=False) as pipe:
                 await pipe.watch("a")
@@ -516,7 +516,7 @@ class TestValkeyAsync(TestBase, IsolatedAsyncioTestCase):
             tracer_provider=self.tracer_provider, response_hook=response_hook
         )
         valkey_client = FakeAsyncValkey()
-        await self._valkey_pipeline_operations(valkey_client)
+        await self._redis_pipeline_operations(valkey_client)
 
         # there should be 3 tests, we start watch operation and have 2 set operation on same key
         spans = self.assert_span_count(3)
@@ -539,7 +539,7 @@ class TestValkeyAsync(TestBase, IsolatedAsyncioTestCase):
             tracer_provider=self.tracer_provider, client=self.client
         )
         valkey_client = FakeAsyncValkey()
-        await self._valkey_pipeline_operations(valkey_client)
+        await self._redis_pipeline_operations(valkey_client)
 
         spans = self.memory_exporter.get_finished_spans()
 
@@ -547,7 +547,7 @@ class TestValkeyAsync(TestBase, IsolatedAsyncioTestCase):
         self.assertEqual(len(spans), 0)
 
         # now with the instrumented client we should get proper spans
-        await self._valkey_pipeline_operations(self.client)
+        await self._redis_pipeline_operations(self.client)
 
         spans = self.memory_exporter.get_finished_spans()
 
@@ -708,7 +708,7 @@ class TestValkeyAsync(TestBase, IsolatedAsyncioTestCase):
         self.instrumentor.uninstrument()
 
 
-class TestValkeyInstance(TestBase):
+class TestRedisInstance(TestBase):
     def assert_span_count(self, count: int):
         """
         Assert that the memory exporter has the expected number of spans.
@@ -746,7 +746,7 @@ class TestValkeyInstance(TestBase):
         self.assertEqual(span.kind, SpanKind.CLIENT)
 
     @staticmethod
-    def valkey_operations(client):
+    def redis_operations(client):
         with pytest.raises(WatchError):
             pipe = client.pipeline(transaction=True)
             pipe.watch("a")
@@ -758,11 +758,11 @@ class TestValkeyInstance(TestBase):
     def test_watch_error_sync_only_client(self):
         valkey_client = fakeredis.FakeStrictValkey()
 
-        self.valkey_operations(valkey_client)
+        self.redis_operations(valkey_client)
 
         self.assert_span_count(0)
 
-        self.valkey_operations(self.client)
+        self.redis_operations(self.client)
 
         # there should be 3 tests, we start watch operation and have 2 set operation on same key
         spans = self.assert_span_count(3)
