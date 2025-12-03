@@ -327,7 +327,7 @@ class TestValkey(TestBase):
         )
 
     def test_connection_error(self):
-        server = fakeredis.FakeServer()
+        server = fakeredis.FakeServer(server_type="valkey")
         server.connected = False
         valkey_client = fakeredis.FakeStrictValkey(server=server)
         try:
