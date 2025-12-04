@@ -27,6 +27,7 @@ from valkey.exceptions import WatchError
 
 from opentelemetry import trace
 from opentelemetry.instrumentation.valkey import ValkeyInstrumentor
+from opentelemetry.instrumentation.utils import suppress_instrumentation
 from opentelemetry.semconv._incubating.attributes.db_attributes import (
     DB_REDIS_DATABASE_INDEX,
     DB_SYSTEM,
@@ -42,6 +43,7 @@ from opentelemetry.test.test_base import TestBase
 from opentelemetry.trace import SpanKind
 
 
+# pylint: disable=too-many-public-methods
 class TestValkey(TestBase):
     def assert_span_count(self, count: int):
         """
@@ -392,6 +394,86 @@ class TestValkey(TestBase):
             self.assertEqual(span.kind, SpanKind.CLIENT)
             self.assertEqual(span.status.status_code, trace.StatusCode.UNSET)
 
+    def test_span_name_empty_pipeline(self):
+        valkey_client = fakeredis.FakeStrictValkey()
+        pipe = valkey_client.pipeline()
+        pipe.execute()
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 1)
+        self.assertEqual(spans[0].name, "valkey")
+        self.assertEqual(spans[0].kind, SpanKind.CLIENT)
+        self.assertEqual(spans[0].status.status_code, trace.StatusCode.UNSET)
+
+    def test_suppress_instrumentation_command(self):
+        valkey_client = valkey.Valkey()
+
+        with mock.patch.object(valkey_client, "connection"):
+            # Execute command with suppression
+            with suppress_instrumentation():
+                valkey_client.get("key")
+
+        # No spans should be created
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 0)
+
+        # Verify that instrumentation works again after exiting the context
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.get("key")
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 1)
+
+    def test_suppress_instrumentation_pipeline(self):
+        valkey_client = fakeredis.FakeStrictValkey()
+
+        with suppress_instrumentation():
+            pipe = valkey_client.pipeline()
+            pipe.set("key1", "value1")
+            pipe.set("key2", "value2")
+            pipe.get("key1")
+            pipe.execute()
+
+        # No spans should be created
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 0)
+
+        # Verify that instrumentation works again after exiting the context
+        pipe = valkey_client.pipeline()
+        pipe.set("key3", "value3")
+        pipe.execute()
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 1)
+        # Pipeline span could be "SET" or "valkey.pipeline" depending on implementation
+        self.assertIn(spans[0].name, ["SET", "valkey.pipeline"])
+
+    def test_suppress_instrumentation_mixed(self):
+        valkey_client = valkey.Valkey()
+
+        # Regular instrumented call
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.set("key1", "value1")
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 1)
+        self.memory_exporter.clear()
+
+        # Suppressed call
+        with suppress_instrumentation():
+            with mock.patch.object(valkey_client, "connection"):
+                valkey_client.set("key2", "value2")
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 0)
+
+        # Another regular instrumented call
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.get("key1")
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 1)
+
 
 class TestValkeyAsync(TestBase, IsolatedAsyncioTestCase):
     def assert_span_count(self, count: int):
@@ -544,6 +626,86 @@ class TestValkeyAsync(TestBase, IsolatedAsyncioTestCase):
         # after un-instrumenting the query should not be recorder
         await self.client.set("key", "value")
         spans = self.assert_span_count(0)
+
+    @pytest.mark.asyncio
+    async def test_span_name_empty_pipeline(self):
+        valkey_client = FakeAsyncValkey()
+        self.instrumentor.instrument_client(
+            client=valkey_client, tracer_provider=self.tracer_provider
+        )
+        async with valkey_client.pipeline() as pipe:
+            await pipe.execute()
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 1)
+        self.assertEqual(spans[0].name, "valkey")
+        self.assertEqual(spans[0].kind, SpanKind.CLIENT)
+        self.assertEqual(spans[0].status.status_code, trace.StatusCode.UNSET)
+        self.instrumentor.uninstrument_client(client=valkey_client)
+
+    @pytest.mark.asyncio
+    async def test_suppress_instrumentation_async_command(self):
+        self.instrumentor.instrument(tracer_provider=self.tracer_provider)
+        valkey_client = FakeAsyncValkey()
+
+        # Execute command with suppression
+        with suppress_instrumentation():
+            await valkey_client.get("key")
+
+        # No spans should be created
+        self.assert_span_count(0)
+
+        # Verify that instrumentation works again after exiting the context
+        await valkey_client.set("key", "value")
+        self.assert_span_count(1)
+        self.instrumentor.uninstrument()
+
+    @pytest.mark.asyncio
+    async def test_suppress_instrumentation_async_pipeline(self):
+        self.instrumentor.instrument(tracer_provider=self.tracer_provider)
+        valkey_client = FakeAsyncValkey()
+
+        # Execute pipeline with suppression
+        with suppress_instrumentation():
+            async with valkey_client.pipeline() as pipe:
+                await pipe.set("key1", "value1")
+                await pipe.set("key2", "value2")
+                await pipe.get("key1")
+                await pipe.execute()
+
+        # No spans should be created
+        self.assert_span_count(0)
+
+        # Verify that instrumentation works again after exiting the context
+        async with valkey_client.pipeline() as pipe:
+            await pipe.set("key3", "value3")
+            await pipe.execute()
+
+        spans = self.assert_span_count(1)
+        # Pipeline span could be "SET" or "valkey.pipeline" depending on implementation
+        self.assertIn(spans[0].name, ["SET", "valkey.pipeline"])
+        self.instrumentor.uninstrument()
+
+    @pytest.mark.asyncio
+    async def test_suppress_instrumentation_async_mixed(self):
+        self.instrumentor.instrument(tracer_provider=self.tracer_provider)
+        valkey_client = FakeAsyncValkey()
+
+        # Regular instrumented call
+        await valkey_client.set("key1", "value1")
+        self.assert_span_count(1)
+        self.memory_exporter.clear()
+
+        # Suppressed call
+        with suppress_instrumentation():
+            await valkey_client.set("key2", "value2")
+
+        self.assert_span_count(0)
+
+        # Another regular instrumented call
+        await valkey_client.get("key1")
+        self.assert_span_count(1)
+        self.instrumentor.uninstrument()
 
 
 class TestValkeyInstance(TestBase):
