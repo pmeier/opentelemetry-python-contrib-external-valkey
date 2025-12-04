@@ -8,12 +8,12 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.9"
-version = "0.60b0"
+version = "0.60b0.post1"
 
 dependencies = [
     "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.59b0",
-    "opentelemetry-semantic-conventions==0.59b0",
+    "opentelemetry-instrumentation==0.60b0",
+    "opentelemetry-semantic-conventions==0.60b0",
     "wrapt>=1.12.1",
 ]
 
@@ -22,7 +22,7 @@ instruments = ["valkey>=6.1.0"]
 dev = [
     {include-group = "instruments"},
     "fakeredis>=2.25",
-    "opentelemetry-test-utils==0.59b0",
+    "opentelemetry-test-utils==0.60b0",
     "pytest>=7.4.4",
     "pytest-asyncio>=1.2.0",
 ]
