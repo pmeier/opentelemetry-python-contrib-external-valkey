@@ -7,13 +7,13 @@ authors = [
     { name = "Philip Meier", email = "github.pmeier@posteo.de" },
 ]
 readme = "README.md"
-requires-python = ">=3.9"
-version = "0.62b0"
+requires-python = ">=3.10"
+version = "0.63b0"
 
 dependencies = [
     "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.62b0",
-    "opentelemetry-semantic-conventions==0.62b0",
+    "opentelemetry-instrumentation==0.63b0",
+    "opentelemetry-semantic-conventions==0.63b0",
     "wrapt>=1.12.1",
 ]
 
@@ -22,7 +22,7 @@ instruments = ["valkey>=6.1.0"]
 dev = [
     {include-group = "instruments"},
     "fakeredis>=2.25",
-    "opentelemetry-test-utils==0.62b0",
+    "opentelemetry-test-utils==0.63b0",
     "pytest>=7.4.4",
     "pytest-asyncio>=1.2.0",
 ]
