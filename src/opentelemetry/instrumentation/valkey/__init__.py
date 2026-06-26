@@ -1,18 +1,7 @@
 # Copyright The OpenTelemetry Authors
 # Copyright 2025 Philip Meier
+# SPDX-License-Identifier: Apache-2.0
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """
 Instrument `valkey`_ to report Valkey queries.
 
@@ -153,6 +142,13 @@ import valkey
 from wrapt import wrap_function_wrapper
 
 from opentelemetry import trace
+from opentelemetry.instrumentation._semconv import (
+    _get_schema_url_for_signal_types,
+    _get_semconv_opt_in_modes,
+    _OpenTelemetrySemanticConventionStability,
+    _OpenTelemetryStabilitySignalType,
+    _set_db_statement,
+)
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.valkey.package import _instruments
 from opentelemetry.instrumentation.valkey.util import (
@@ -167,9 +163,6 @@ from opentelemetry.instrumentation.valkey.version import __version__
 from opentelemetry.instrumentation.utils import (
     is_instrumentation_enabled,
     unwrap,
-)
-from opentelemetry.semconv._incubating.attributes.db_attributes import (
-    DB_STATEMENT,
 )
 from opentelemetry.trace import (
     StatusCode,
@@ -218,11 +211,32 @@ if _CLIENT_ASYNCIO_SUPPORT:
 _INSTRUMENTATION_ATTR = "_is_instrumented_by_opentelemetry"
 
 
+def _execute_hook(hook: Callable[..., None], *args: Any) -> None:
+    try:
+        hook(*args)
+    # pylint: disable-next=broad-exception-caught
+    except Exception:
+        _logger.warning("Exception raised by hook %r", hook, exc_info=True)
+
+
 def _traced_execute_factory(
     tracer: Tracer,
     request_hook: RequestHook | None = None,
     response_hook: ResponseHook | None = None,
 ):
+    sem_conv_opt_in_modes = _get_semconv_opt_in_modes(
+        (
+            _OpenTelemetryStabilitySignalType.DATABASE,
+            _OpenTelemetryStabilitySignalType.HTTP,
+        )
+    )
+    db_sem_conv_opt_in_mode = sem_conv_opt_in_modes[
+        _OpenTelemetryStabilitySignalType.DATABASE
+    ]
+    http_sem_conv_opt_in_mode = sem_conv_opt_in_modes[
+        _OpenTelemetryStabilitySignalType.HTTP
+    ]
+
     def _traced_execute_command(
         func: Callable[..., R],
         instance: ValkeyInstance,
@@ -238,19 +252,30 @@ def _traced_execute_factory(
             name, kind=trace.SpanKind.CLIENT
         ) as span:
             if span.is_recording():
-                span.set_attribute(DB_STATEMENT, query)
-                _set_connection_attributes(span, instance)
-                span.set_attribute("db.valkey.args_length", len(args))
+                span_attrs = {}
+                _set_db_statement(span_attrs, query, db_sem_conv_opt_in_mode)
+                span_attrs["db.valkey.args_length"] = len(args)
+
+                # Set all DB attributes
+                for key, value in span_attrs.items():
+                    span.set_attribute(key, value)
+
+                _set_connection_attributes(
+                    span,
+                    instance,
+                    db_sem_conv_opt_in_mode,
+                    http_sem_conv_opt_in_mode,
+                )
                 if span.name == "valkey.create_index":
                     _add_create_attributes(span, args)
             if callable(request_hook):
-                request_hook(span, instance, args, kwargs)
+                _execute_hook(request_hook, span, instance, args, kwargs)
             response = func(*args, **kwargs)
             if span.is_recording():
                 if span.name == "valkey.search":
                     _add_search_attributes(span, response, args)
             if callable(response_hook):
-                response_hook(span, instance, response)
+                _execute_hook(response_hook, span, instance, response)
             return response
 
     return _traced_execute_command
@@ -261,6 +286,19 @@ def _traced_execute_pipeline_factory(
     request_hook: RequestHook | None = None,
     response_hook: ResponseHook | None = None,
 ):
+    sem_conv_opt_in_modes = _get_semconv_opt_in_modes(
+        (
+            _OpenTelemetryStabilitySignalType.DATABASE,
+            _OpenTelemetryStabilitySignalType.HTTP,
+        )
+    )
+    db_sem_conv_opt_in_mode = sem_conv_opt_in_modes[
+        _OpenTelemetryStabilitySignalType.DATABASE
+    ]
+    http_sem_conv_opt_in_mode = sem_conv_opt_in_modes[
+        _OpenTelemetryStabilitySignalType.HTTP
+    ]
+
     def _traced_execute_pipeline(
         func: Callable[..., R],
         instance: PipelineInstance,
@@ -280,10 +318,21 @@ def _traced_execute_pipeline_factory(
             span_name, kind=trace.SpanKind.CLIENT
         ) as span:
             if span.is_recording():
-                span.set_attribute(DB_STATEMENT, resource)
-                _set_connection_attributes(span, instance)
-                span.set_attribute(
-                    "db.valkey.pipeline_length", len(command_stack)
+                span_attrs = {}
+                _set_db_statement(
+                    span_attrs, resource, db_sem_conv_opt_in_mode
+                )
+                span_attrs["db.valkey.pipeline_length"] = len(command_stack)
+
+                # Set all DB attributes
+                for key, value in span_attrs.items():
+                    span.set_attribute(key, value)
+
+                _set_connection_attributes(
+                    span,
+                    instance,
+                    db_sem_conv_opt_in_mode,
+                    http_sem_conv_opt_in_mode,
                 )
 
             response = None
@@ -294,7 +343,7 @@ def _traced_execute_pipeline_factory(
                 exception = watch_exception
 
             if callable(response_hook):
-                response_hook(span, instance, response)
+                _execute_hook(response_hook, span, instance, response)
 
         if exception:
             raise exception
@@ -309,6 +358,19 @@ def _async_traced_execute_factory(
     request_hook: RequestHook | None = None,
     response_hook: ResponseHook | None = None,
 ):
+    sem_conv_opt_in_modes = _get_semconv_opt_in_modes(
+        (
+            _OpenTelemetryStabilitySignalType.DATABASE,
+            _OpenTelemetryStabilitySignalType.HTTP,
+        )
+    )
+    db_sem_conv_opt_in_mode = sem_conv_opt_in_modes[
+        _OpenTelemetryStabilitySignalType.DATABASE
+    ]
+    http_sem_conv_opt_in_mode = sem_conv_opt_in_modes[
+        _OpenTelemetryStabilitySignalType.HTTP
+    ]
+
     async def _async_traced_execute_command(
         func: Callable[..., Awaitable[R]],
         instance: AsyncValkeyInstance,
@@ -325,14 +387,25 @@ def _async_traced_execute_factory(
             name, kind=trace.SpanKind.CLIENT
         ) as span:
             if span.is_recording():
-                span.set_attribute(DB_STATEMENT, query)
-                _set_connection_attributes(span, instance)
-                span.set_attribute("db.valkey.args_length", len(args))
+                span_attrs = {}
+                _set_db_statement(span_attrs, query, db_sem_conv_opt_in_mode)
+                span_attrs["db.valkey.args_length"] = len(args)
+
+                # Set all DB attributes
+                for key, value in span_attrs.items():
+                    span.set_attribute(key, value)
+
+                _set_connection_attributes(
+                    span,
+                    instance,
+                    db_sem_conv_opt_in_mode,
+                    http_sem_conv_opt_in_mode,
+                )
             if callable(request_hook):
-                request_hook(span, instance, args, kwargs)
+                _execute_hook(request_hook, span, instance, args, kwargs)
             response = await func(*args, **kwargs)
             if callable(response_hook):
-                response_hook(span, instance, response)
+                _execute_hook(response_hook, span, instance, response)
             return response
 
     return _async_traced_execute_command
@@ -343,6 +416,19 @@ def _async_traced_execute_pipeline_factory(
     request_hook: RequestHook | None = None,
     response_hook: ResponseHook | None = None,
 ):
+    sem_conv_opt_in_modes = _get_semconv_opt_in_modes(
+        (
+            _OpenTelemetryStabilitySignalType.DATABASE,
+            _OpenTelemetryStabilitySignalType.HTTP,
+        )
+    )
+    db_sem_conv_opt_in_mode = sem_conv_opt_in_modes[
+        _OpenTelemetryStabilitySignalType.DATABASE
+    ]
+    http_sem_conv_opt_in_mode = sem_conv_opt_in_modes[
+        _OpenTelemetryStabilitySignalType.HTTP
+    ]
+
     async def _async_traced_execute_pipeline(
         func: Callable[..., Awaitable[R]],
         instance: AsyncPipelineInstance,
@@ -364,10 +450,21 @@ def _async_traced_execute_pipeline_factory(
             span_name, kind=trace.SpanKind.CLIENT
         ) as span:
             if span.is_recording():
-                span.set_attribute(DB_STATEMENT, resource)
-                _set_connection_attributes(span, instance)
-                span.set_attribute(
-                    "db.valkey.pipeline_length", len(command_stack)
+                span_attrs = {}
+                _set_db_statement(
+                    span_attrs, resource, db_sem_conv_opt_in_mode
+                )
+                span_attrs["db.valkey.pipeline_length"] = len(command_stack)
+
+                # Set all DB attributes
+                for key, value in span_attrs.items():
+                    span.set_attribute(key, value)
+
+                _set_connection_attributes(
+                    span,
+                    instance,
+                    db_sem_conv_opt_in_mode,
+                    http_sem_conv_opt_in_mode,
                 )
 
             response = None
@@ -378,7 +475,7 @@ def _async_traced_execute_pipeline_factory(
                 exception = watch_exception
 
             if callable(response_hook):
-                response_hook(span, instance, response)
+                _execute_hook(response_hook, span, instance, response)
 
         if exception:
             raise exception
@@ -541,12 +638,20 @@ def _instrument_client(
 class ValkeyInstrumentor(BaseInstrumentor):
     @staticmethod
     def _get_tracer(**kwargs):
+        # Initialize semantic conventions opt-in if needed
+        _OpenTelemetrySemanticConventionStability._initialize()
+        # Valkey instrumentation supports both DATABASE and HTTP signal types
+        signal_types = [
+            _OpenTelemetryStabilitySignalType.DATABASE,
+            _OpenTelemetryStabilitySignalType.HTTP,
+        ]
+
         tracer_provider = kwargs.get("tracer_provider")
         return get_tracer(
             __name__,
             __version__,
             tracer_provider=tracer_provider,
-            schema_url="https://opentelemetry.io/schemas/1.11.0",
+            schema_url=_get_schema_url_for_signal_types(signal_types),
         )
 
     def instrument(
@@ -699,7 +804,6 @@ class ValkeyInstrumentor(BaseInstrumentor):
             _logger.warning(
                 "Attempting to un-instrument Valkey connection that wasn't instrumented"
             )
-            return
 
     def instrumentation_dependencies(self) -> Collection[str]:
         """Return a list of python packages with versions that the will be instrumented."""
