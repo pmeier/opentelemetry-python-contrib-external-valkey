@@ -400,6 +400,42 @@ class TestValkey(TestBase):
             NetTransportValues.OTHER.value,
         )
 
+    def test_connection_pool_without_connection_kwargs(self):
+        valkey_client = valkey.Valkey()
+        valkey_client.connection_pool = mock.Mock(spec=["disconnect"])
+
+        with mock.patch.object(valkey_client, "connection"):
+            valkey_client.set("key", "value")
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 1)
+
+        span = spans[0]
+        self.assertEqual(span.status.status_code, trace.StatusCode.UNSET)
+        self.assertEqual(span.events, ())
+        # The base db.statement is still recorded; connection-derived
+        # attributes are simply absent when they cannot be extracted.
+        self.assertIn(DB_STATEMENT, span.attributes)
+        self.assertNotIn(DB_SYSTEM, span.attributes)
+        self.assertNotIn(NET_PEER_NAME, span.attributes)
+
+    def test_connection_pool_without_connection_kwargs_async(self):
+        valkey_client = valkey.asyncio.Valkey()
+        valkey_client.connection_pool = mock.Mock(spec=["disconnect"])
+
+        with mock.patch.object(valkey_client, "connection", AsyncMock()):
+            asyncio.run(valkey_client.set("key", "value"))
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 1)
+
+        span = spans[0]
+        self.assertEqual(span.status.status_code, trace.StatusCode.UNSET)
+        self.assertEqual(span.events, ())
+        self.assertIn(DB_STATEMENT, span.attributes)
+        self.assertNotIn(DB_SYSTEM, span.attributes)
+        self.assertNotIn(NET_PEER_NAME, span.attributes)
+
     def test_connection_error(self):
         server = fakeredis.FakeServer(server_type="valkey")
         server.connected = False
